@@ -21,6 +21,7 @@ try {
 
 const db = admin.apps.length ? admin.firestore() : null;
 const app = express();
+const ORDER_STATUSES = ['Proses', 'Selesai', 'Belum Diambil', 'Sudah Diambil'];
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
@@ -50,7 +51,32 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-// 2. Endpoint untuk Mendapatkan Daftar Pesanan Laundry
+// 2. Endpoint untuk Memperbarui Status Pesanan
+app.patch('/api/orders/:id/status', async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(500).json({ success: false, error: 'Database belum terkoneksi dengan benar.' });
+    }
+
+    const { status } = req.body;
+    if (!ORDER_STATUSES.includes(status)) {
+      return res.status(400).json({ success: false, error: 'Status pesanan tidak valid.' });
+    }
+
+    const orderRef = db.collection('orders').doc(req.params.id);
+    const order = await orderRef.get();
+    if (!order.exists) {
+      return res.status(404).json({ success: false, error: 'Pesanan tidak ditemukan.' });
+    }
+
+    await orderRef.update({ status });
+    res.status(200).json({ success: true, message: 'Status pesanan berhasil diperbarui.' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 3. Endpoint untuk Mendapatkan Daftar Pesanan Laundry
 app.get('/api/orders', async (req, res) => {
   try {
     if (!db) {
