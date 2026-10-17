@@ -1,21 +1,37 @@
 const express = require('express');
 const admin = require('firebase-admin');
-const path = require('path'); // Tambahkan modul path
-require('dotenv').config();
+const path = require('path');
 
-// ... (kode inisialisasi Firebase admin tetap sama) ...
+// Inisialisasi Firebase dengan pengecekan aman
+try {
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY 
+          ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') 
+          : undefined,
+      }),
+    });
+  }
+} catch (error) {
+  console.error('Firebase initialization error:', error.stack);
+}
 
-const db = admin.firestore();
+const db = admin.apps.length ? admin.firestore() : null;
 const app = express();
 
 app.use(express.json());
-
-// PENTING: Menyediakan file statis (HTML, CSS, JS frontend) dari folder public
 app.use(express.static(path.join(__dirname, '../public')));
 
 // 1. Endpoint untuk Menambah Pesanan Laundry
 app.post('/api/orders', async (req, res) => {
   try {
+    if (!db) {
+      return res.status(500).json({ success: false, error: 'Database belum terkoneksi dengan benar.' });
+    }
+
     const { customerName, serviceType, weightKg, totalHarga } = req.body;
     
     const newOrder = {
@@ -37,6 +53,10 @@ app.post('/api/orders', async (req, res) => {
 // 2. Endpoint untuk Mendapatkan Daftar Pesanan Laundry
 app.get('/api/orders', async (req, res) => {
   try {
+    if (!db) {
+      return res.status(500).json({ success: false, error: 'Database belum terkoneksi dengan benar.' });
+    }
+
     const snapshot = await db.collection('orders').orderBy('createdAt', 'desc').get();
     const orders = [];
     snapshot.forEach(doc => {
