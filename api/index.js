@@ -1,30 +1,17 @@
 const express = require('express');
 const admin = require('firebase-admin');
+const path = require('path'); // Tambahkan modul path
 require('dotenv').config();
 
-// Inisialisasi Firebase Admin SDK menggunakan Environment Variables
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      // Menanganibackslash padaprivate key dienv
-      privateKey: process.env.FIREBASE_PRIVATE_KEY 
-        ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') 
-        : undefined,
-    }),
-  });
-}
+// ... (kode inisialisasi Firebase admin tetap sama) ...
 
 const db = admin.firestore();
 const app = express();
 
 app.use(express.json());
 
-// Endpoint Root
-app.get('/', (req, res) => {
-  res.json({ message: 'Selamat datang di API Laundry Backend!' });
-});
+// PENTING: Menyediakan file statis (HTML, CSS, JS frontend) dari folder public
+app.use(express.static(path.join(__dirname, '../public')));
 
 // 1. Endpoint untuk Menambah Pesanan Laundry
 app.post('/api/orders', async (req, res) => {
@@ -33,7 +20,7 @@ app.post('/api/orders', async (req, res) => {
     
     const newOrder = {
       customerName,
-      serviceType, // contoh: "Cuci Kering", "Setrika Saja"
+      serviceType,
       weightKg,
       totalHarga,
       status: 'Proses',
