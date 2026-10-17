@@ -45,16 +45,18 @@
             background: var(--green-dark);
         }
         .brand { display: flex; align-items: center; gap: 12px; }
-        .brand-mark {
-            width: 38px;
-            height: 38px;
+        .brand-logo {
+            width: 50px;
+            height: 50px;
+            flex: 0 0 50px;
             display: grid;
             place-items: center;
-            border: 1px solid rgba(255,255,255,.24);
-            border-radius: 11px;
-            color: var(--lime);
-            font: 800 17px 'Manrope', sans-serif;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,.4);
+            border-radius: 50%;
+            background: white;
         }
+        .brand-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
         .brand-name { font: 700 15px 'Manrope', sans-serif; letter-spacing: 0; }
         .brand-caption { margin-top: 2px; color: #b3c7bc; font-size: 11px; }
         .topbar-date { color: #d3e0d9; font-size: 12px; }
@@ -216,9 +218,9 @@
 <body>
     <header class="topbar">
         <div class="brand">
-            <div class="brand-mark" aria-hidden="true">R</div>
+            <div class="brand-logo"><img src="logo.jpg" alt="Logo Warung Laundry"></div>
             <div>
-                <div class="brand-name">Ruang Cuci</div>
+                <div class="brand-name">Warung Laundry</div>
                 <div class="brand-caption">Panel operasional</div>
             </div>
         </div>
