@@ -155,6 +155,63 @@ app.get('/api/customers', async (req, res) => {
   }
 });
 
+app.patch('/api/customers/:id', async (req, res) => {
+  try {
+    if (!db) return res.status(500).json({ success: false, error: 'Database belum terkoneksi dengan benar.' });
+    const { name, phone, address = '', preferences = '' } = req.body;
+    const normalizedName = String(name || '').trim();
+    const normalizedPhone = String(phone || '').trim();
+    const phoneDigits = normalizedPhone.replace(/\D/g, '');
+    if (!normalizedName || !phoneDigits) {
+      return res.status(400).json({ success: false, error: 'Nama dan nomor telepon wajib diisi.' });
+    }
+
+    const customerRef = db.collection('customers').doc(req.params.id);
+    const customerSnapshot = await customerRef.get();
+    if (!customerSnapshot.exists) return res.status(404).json({ success: false, error: 'Pelanggan tidak ditemukan.' });
+    const oldCustomer = customerSnapshot.data();
+    const nextCustomerRef = db.collection('customers').doc(phoneDigits);
+    const updatedCustomer = {
+      name: normalizedName,
+      phone: normalizedPhone,
+      address: String(address).trim(),
+      preferences: String(preferences).trim(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await db.runTransaction(async transaction => {
+      const currentSnapshot = await transaction.get(customerRef);
+      if (!currentSnapshot.exists) throw Object.assign(new Error('Pelanggan tidak ditemukan.'), { statusCode: 404 });
+      if (nextCustomerRef.id !== customerRef.id) {
+        const duplicateSnapshot = await transaction.get(nextCustomerRef);
+        if (duplicateSnapshot.exists) throw Object.assign(new Error('Nomor telepon sudah digunakan pelanggan lain.'), { statusCode: 409 });
+        transaction.set(nextCustomerRef, updatedCustomer);
+        transaction.delete(customerRef);
+      } else {
+        transaction.set(customerRef, updatedCustomer, { merge: true });
+      }
+    });
+
+    if (oldCustomer.phone) {
+      const matchingOrders = await db.collection('orders').where('phone', '==', oldCustomer.phone).get();
+      for (let start = 0; start < matchingOrders.docs.length; start += 450) {
+        const batch = db.batch();
+        matchingOrders.docs.slice(start, start + 450).forEach(order => batch.update(order.ref, {
+          customerName: normalizedName,
+          phone: normalizedPhone,
+          address: updatedCustomer.address,
+          preferences: updatedCustomer.preferences,
+        }));
+        await batch.commit();
+      }
+    }
+
+    res.json({ success: true, data: { id: phoneDigits, ...updatedCustomer } });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ success: false, error: error.message });
+  }
+});
+
 app.get('/api/expenses', async (req, res) => {
   try {
     if (!db) return res.status(500).json({ success: false, error: 'Database belum terkoneksi dengan benar.' });
