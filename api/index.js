@@ -88,15 +88,15 @@ app.post('/api/orders', async (req, res) => {
     };
 
     const docRef = await db.collection('orders').add(newOrder);
-    if (newOrder.phone) {
-      await db.collection('customers').doc(newOrder.phone.replace(/\D/g, '')).set({
-        name: newOrder.customerName,
-        phone: newOrder.phone,
-        address: newOrder.address,
-        preferences: newOrder.preferences,
-        updatedAt: now,
-      }, { merge: true });
-    }
+    const customerId = newOrder.phone.replace(/\D/g, '')
+      || `name-${encodeURIComponent(newOrder.customerName.toLocaleLowerCase('id-ID'))}`;
+    await db.collection('customers').doc(customerId).set({
+      name: newOrder.customerName,
+      phone: newOrder.phone,
+      address: newOrder.address,
+      preferences: newOrder.preferences,
+      updatedAt: now,
+    }, { merge: true });
     res.status(201).json({ success: true, id: docRef.id, message: 'Pesanan berhasil dibuat' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -168,9 +168,13 @@ app.patch('/api/customers/:id', async (req, res) => {
 
     const customerRef = db.collection('customers').doc(req.params.id);
     const customerSnapshot = await customerRef.get();
-    if (!customerSnapshot.exists) return res.status(404).json({ success: false, error: 'Pelanggan tidak ditemukan.' });
-    const oldCustomer = customerSnapshot.data();
-    const nextCustomerRef = db.collection('customers').doc(phoneDigits);
+    const originalName = String(req.body.originalName || '').trim();
+    if (!customerSnapshot.exists && (!req.params.id.startsWith('name-') || !originalName)) {
+      return res.status(404).json({ success: false, error: 'Pelanggan tidak ditemukan.' });
+    }
+    const oldCustomer = customerSnapshot.exists ? customerSnapshot.data() : { name: originalName, phone: '' };
+    const nextCustomerId = phoneDigits || `name-${encodeURIComponent(normalizedName.toLocaleLowerCase('id-ID'))}`;
+    const nextCustomerRef = db.collection('customers').doc(nextCustomerId);
     const updatedCustomer = {
       name: normalizedName,
       phone: normalizedPhone,
@@ -181,32 +185,34 @@ app.patch('/api/customers/:id', async (req, res) => {
 
     await db.runTransaction(async transaction => {
       const currentSnapshot = await transaction.get(customerRef);
-      if (!currentSnapshot.exists) throw Object.assign(new Error('Pelanggan tidak ditemukan.'), { statusCode: 404 });
+      if (!currentSnapshot.exists && !req.params.id.startsWith('name-')) {
+        throw Object.assign(new Error('Pelanggan tidak ditemukan.'), { statusCode: 404 });
+      }
       if (nextCustomerRef.id !== customerRef.id) {
         const duplicateSnapshot = await transaction.get(nextCustomerRef);
         if (duplicateSnapshot.exists) throw Object.assign(new Error('Nomor telepon sudah digunakan pelanggan lain.'), { statusCode: 409 });
         transaction.set(nextCustomerRef, updatedCustomer);
-        transaction.delete(customerRef);
+        if (currentSnapshot.exists) transaction.delete(customerRef);
       } else {
         transaction.set(customerRef, updatedCustomer, { merge: true });
       }
     });
 
-    if (oldCustomer.phone) {
-      const matchingOrders = await db.collection('orders').where('phone', '==', oldCustomer.phone).get();
-      for (let start = 0; start < matchingOrders.docs.length; start += 450) {
-        const batch = db.batch();
-        matchingOrders.docs.slice(start, start + 450).forEach(order => batch.update(order.ref, {
-          customerName: normalizedName,
-          phone: normalizedPhone,
-          address: updatedCustomer.address,
-          preferences: updatedCustomer.preferences,
-        }));
-        await batch.commit();
-      }
+    const matchingOrders = oldCustomer.phone
+      ? await db.collection('orders').where('phone', '==', oldCustomer.phone).get()
+      : await db.collection('orders').where('customerName', '==', oldCustomer.name).get();
+    for (let start = 0; start < matchingOrders.docs.length; start += 450) {
+      const batch = db.batch();
+      matchingOrders.docs.slice(start, start + 450).forEach(order => batch.update(order.ref, {
+        customerName: normalizedName,
+        phone: normalizedPhone,
+        address: updatedCustomer.address,
+        preferences: updatedCustomer.preferences,
+      }));
+      await batch.commit();
     }
 
-    res.json({ success: true, data: { id: phoneDigits, ...updatedCustomer } });
+    res.json({ success: true, data: { id: nextCustomerId, ...updatedCustomer } });
   } catch (error) {
     res.status(error.statusCode || 500).json({ success: false, error: error.message });
   }

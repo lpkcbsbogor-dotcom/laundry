@@ -364,6 +364,7 @@
         let expenses = [];
         let inventory = [];
         let outlets = [];
+        let customerRows = [];
         let toastTimer;
         let editingCustomerId = '';
 
@@ -564,23 +565,40 @@
         function renderCustomers() {
             const search = document.getElementById('searchCustomers').value.trim().toLocaleLowerCase('id-ID');
             const grouped = new Map();
-            customers.forEach(customer => grouped.set(customer.phone || customer.id, { ...customer, orderCount: 0, spend: 0 }));
+            customers.forEach(customer => grouped.set(customerGroupKey(customer.phone, customer.name, customer.id), { ...customer, orderCount: 0, spend: 0 }));
             orders.forEach(order => {
-                const key = order.phone || order.customerName;
-                const customer = grouped.get(key) || { name: order.customerName, phone: order.phone, address: order.address, preferences: order.preferences, orderCount: 0, spend: 0 };
+                const key = customerGroupKey(order.phone, order.customerName);
+                const customer = grouped.get(key) || {
+                    id: order.phone ? order.phone.replace(/\D/g, '') : customerIdFromName(order.customerName),
+                    name: order.customerName,
+                    phone: order.phone,
+                    address: order.address,
+                    preferences: order.preferences,
+                    orderCount: 0,
+                    spend: 0,
+                };
                 customer.orderCount += 1;
                 customer.spend += Number(order.totalHarga || 0);
                 if (order.address) customer.address = order.address;
                 if (order.preferences) customer.preferences = order.preferences;
                 grouped.set(key, customer);
             });
-            const rows = [...grouped.values()].filter(customer => `${customer.name || ''} ${customer.phone || ''}`.toLocaleLowerCase('id-ID').includes(search));
-            document.getElementById('customerTableBody').innerHTML = rows.length ? rows.map(customer => `<tr><td class="customer">${escapeHtml(customer.name || '-')}</td><td>${escapeHtml(customer.phone || '-')}</td><td>${escapeHtml(customer.address || '-')}</td><td>${escapeHtml(customer.preferences || '-')}</td><td>${customer.orderCount}</td><td class="price">${rupiah(customer.spend)}</td><td><button class="small-button" type="button" data-edit-customer="${escapeHtml(customer.id)}">Edit</button></td></tr>`).join('') : '<tr><td colspan="7" class="empty-state">Belum ada data pelanggan.</td></tr>';
+            customerRows = [...grouped.values()].filter(customer => `${customer.name || ''} ${customer.phone || ''}`.toLocaleLowerCase('id-ID').includes(search));
+            document.getElementById('customerTableBody').innerHTML = customerRows.length ? customerRows.map(customer => `<tr><td class="customer">${escapeHtml(customer.name || '-')}</td><td>${escapeHtml(customer.phone || '-')}</td><td>${escapeHtml(customer.address || '-')}</td><td>${escapeHtml(customer.preferences || '-')}</td><td>${customer.orderCount}</td><td class="price">${rupiah(customer.spend)}</td><td><button class="small-button" type="button" data-edit-customer="${escapeHtml(customer.id)}">Edit</button></td></tr>`).join('') : '<tr><td colspan="7" class="empty-state">Belum ada data pelanggan.</td></tr>';
             document.getElementById('customerTableBody').querySelectorAll('[data-edit-customer]').forEach(button => button.addEventListener('click', () => openCustomerEditor(button.dataset.editCustomer)));
         }
 
+        function customerGroupKey(phone, name, id = '') {
+            const normalizedPhone = String(phone || '').replace(/\D/g, '');
+            return normalizedPhone ? `phone:${normalizedPhone}` : `name:${String(name || id).trim().toLocaleLowerCase('id-ID')}`;
+        }
+
+        function customerIdFromName(name) {
+            return `name-${encodeURIComponent(String(name || '').trim().toLocaleLowerCase('id-ID'))}`;
+        }
+
         function openCustomerEditor(customerId) {
-            const customer = customers.find(item => item.id === customerId);
+            const customer = customers.find(item => item.id === customerId) || customerRows.find(item => item.id === customerId);
             if (!customer) return;
             editingCustomerId = customerId;
             document.getElementById('editCustomerName').value = customer.name || '';
@@ -644,6 +662,9 @@
                         phone: document.getElementById('editCustomerPhone').value,
                         address: document.getElementById('editCustomerAddress').value,
                         preferences: document.getElementById('editCustomerPreferences').value,
+                        originalName: customers.find(customer => customer.id === editingCustomerId)?.name
+                            || customerRows.find(customer => customer.id === editingCustomerId)?.name
+                            || '',
                     }),
                 });
                 document.getElementById('customerEditDialog').close();
